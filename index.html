@@ -3,77 +3,135 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>學生點名系統</title>
+    <title>進階點名系統</title>
     <style>
-        body { font-family: sans-serif; max-width: 500px; margin: 50px auto; padding: 20px; text-align: center; }
-        input { padding: 10px; width: 70%; font-size: 16px; }
-        button { padding: 10px 20px; cursor: pointer; background-color: #28a745; color: white; border: none; border-radius: 5px; }
-        #recordList { margin-top: 20px; text-align: left; border: 1px solid #ddd; padding: 10px; height: 300px; overflow-y: auto; }
-        .record-item { border-bottom: 1px solid #eee; padding: 5px 0; display: flex; justify-content: space-between; }
-        .export-btn { background-color: #007bff; margin-top: 10px; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; text-align: center; background-color: #f4f7f6; }
+        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h2 { color: #333; margin-bottom: 20px; }
+        input { padding: 12px; width: 65%; font-size: 18px; border: 2px solid #ddd; border-radius: 6px; outline: none; transition: border-color 0.3s; }
+        input:focus { border-color: #007bff; }
+        button { padding: 12px 20px; font-size: 16px; cursor: pointer; border: none; border-radius: 6px; transition: opacity 0.2s; margin: 5px; }
+        .add-btn { background-color: #28a745; color: white; }
+        .export-btn { background-color: #007bff; color: white; width: 100%; margin-top: 20px; }
+        .clear-btn { background-color: #dc3545; color: white; font-size: 14px; padding: 5px 10px; margin-top: 10px; }
+        #recordList { margin-top: 25px; text-align: left; background: #fff; border: 1px solid #eee; border-radius: 8px; height: 350px; overflow-y: auto; padding: 10px; }
+        .record-item { border-bottom: 1px solid #f0f0f0; padding: 10px; display: flex; justify-content: space-between; align-items: center; animation: fadeIn 0.3s ease; }
+        .record-info { display: flex; flex-direction: column; }
+        .record-id { font-weight: bold; color: #2c3e50; }
+        .record-time { font-size: 12px; color: #95a5a6; }
+        .count-tag { background: #e9ecef; padding: 2px 8px; border-radius: 20px; font-size: 14px; color: #495057; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
 
-    <h2>🎓 學生點名系統</h2>
+<div class="card">
+    <h2>🎓 學生點名系統 <span id="totalCount" class="count-tag">0 人</span></h2>
     
     <div>
-        <input type="text" id="studentId" placeholder="輸入學號並按 Enter" autofocus>
-        <button onclick="addRecord()">點名</button>
+        <input type="text" id="studentId" placeholder="輸入學號..." autofocus>
+        <button class="add-btn" onclick="addRecord()">點名</button>
     </div>
 
     <div id="recordList">
-        <strong>點名紀錄：</strong>
         <div id="listContent"></div>
     </div>
 
-    <button class="export-btn" onclick="exportCSV()">下載點名紀錄 (CSV)</button>
+    <button class="export-btn" onclick="exportCSV()">📦 匯出 Excel (CSV)</button>
+    <button class="clear-btn" onclick="clearAll()">⚠️ 清除所有紀錄</button>
+</div>
 
-    <script>
-        let records = [];
+<script>
+    // 初始化：從 LocalStorage 讀取舊資料
+    let records = JSON.parse(localStorage.getItem('attendance_records')) || [];
 
-        // 監聽 Enter 鍵
-        document.getElementById('studentId').addEventListener('keypress', function (e) {
+    // 頁面載入時渲染一次
+    window.onload = () => {
+        updateUI();
+        document.getElementById('studentId').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') addRecord();
         });
+    };
 
-        function addRecord() {
-            const input = document.getElementById('studentId');
-            const id = input.value.trim();
-            
-            if (id === "") return;
+    function addRecord() {
+        const input = document.getElementById('studentId');
+        const id = input.value.trim().toUpperCase(); // 自動轉大寫，避免 R123 跟 r123 被視為不同人
+        
+        if (!id) return;
 
-            const time = new Date().toLocaleTimeString();
-            const record = { id, time };
-            
-            records.unshift(record); // 新的排在前面
-            updateUI();
-            input.value = ""; // 清空輸入框
-            input.focus();
+        // 【功能一】重複點名檢查
+        if (records.some(r => r.id === id)) {
+            alert(`⚠️ 學號 ${id} 已經點過名了！`);
+            input.value = "";
+            return;
         }
 
-        function updateUI() {
-            const container = document.getElementById('listContent');
-            container.innerHTML = records.map(r => `
-                <div class="record-item">
-                    <span>${r.id}</span>
-                    <span style="color: #888; font-size: 0.8em;">${r.time}</span>
+        const now = new Date();
+        const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+        
+        const newRecord = { id, time: timeStr };
+        records.unshift(newRecord); 
+
+        // 【功能二】存檔到 LocalStorage
+        saveData();
+        updateUI();
+        
+        input.value = "";
+        input.focus();
+    }
+
+    function saveData() {
+        localStorage.setItem('attendance_records', JSON.stringify(records));
+    }
+
+    function updateUI() {
+        const container = document.getElementById('listContent');
+        const countSpan = document.getElementById('totalCount');
+        
+        countSpan.innerText = `${records.length} 人`;
+        
+        if (records.length === 0) {
+            container.innerHTML = '<p style="text-align:center; color:#ccc; margin-top:100px;">暫無紀錄</p>';
+            return;
+        }
+
+        container.innerHTML = records.map(r => `
+            <div class="record-item">
+                <div class="record-info">
+                    <span class="record-id">${r.id}</span>
+                    <span class="record-time">點名時間：${r.time}</span>
                 </div>
-            `).join('');
-        }
+                <div style="color: #28a745;">✓</div>
+            </div>
+        `).join('');
+    }
 
-        function exportCSV() {
-            let csvContent = "data:text/csv;charset=utf-8,學號,時間\n";
-            records.forEach(r => {
-                csvContent += `${r.id},${r.time}\n`;
-            });
-            const encodedUri = encodeURI(csvContent);
-            const link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            link.setAttribute("download", `點名紀錄_${new Date().toLocaleDateString()}.csv`);
-            document.body.appendChild(link);
-            link.click();
+    function exportCSV() {
+        if (records.length === 0) return alert("沒有資料可以匯出");
+
+        // 解決中文亂碼問題：加上 BOM (\ufeff)
+        let csvContent = "\ufeff學號,點名時間\n";
+        records.forEach(r => {
+            csvContent += `${r.id},${r.time}\n`;
+        });
+
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `點名紀錄_${new Date().toLocaleDateString()}.csv`);
+        document.body.appendChild(link);
+        link.click();
+    }
+
+    function clearAll() {
+        if (confirm("確定要清空所有點名紀錄嗎？這無法還原喔！")) {
+            records = [];
+            saveData();
+            updateUI();
         }
-    </script>
+    }
+</script>
+
 </body>
 </html>
