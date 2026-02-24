@@ -124,12 +124,18 @@
     }
 
     function exportResults() {
-        if (attendance.length === 0 && Object.keys(masterList).length === 0) return;
+        if (attendance.length === 0 && Object.keys(masterList).length === 0) {
+            alert("目前沒有資料可以匯出");
+            return;
+        }
+
         const late = document.getElementById('lateTime').value;
         const veryLate = document.getElementById('veryLateTime').value;
-        const today = new Date().toLocaleDateString('zh-TW'); // YYYY/MM/DD
+        const today = new Date().toLocaleDateString('zh-TW'); 
         
         let report = [];
+
+        // 1. 處理名單內所有人 (包含未到者)
         Object.keys(masterList).forEach(id => {
             const record = attendance.find(a => a.id === id);
             if (record) {
@@ -142,15 +148,33 @@
             }
         });
 
-        report.sort((a, b) => a.id.localeCompare(b.id));
-        let csv = "\ufeff學號,姓名,日期,點名時間,狀態\n";
-        report.forEach(r => csv += `${r.id},${r.name},${r.date},${r.time},${r.status}\n`);
+        // 2. 【核心修正】處理名單外點名的人 (Guest)
+        // 找出那些點了名但不在 masterList 裡的學號
+        const guests = attendance.filter(a => !masterList[a.id]);
+        guests.forEach(a => {
+            let status = "已到(名單外)";
+            if (a.time > veryLate) status = "大遲到(名單外)";
+            else if (a.time > late) status = "遲到(名單外)";
+            
+            report.push({ id: a.id, name: "現場登記/名單外", date: today, time: a.time, status: status });
+        });
 
-        const blob = new Blob([csv], { type: 'text/csv' });
+        // 依學號排序，讓資料整齊
+        report.sort((a, b) => a.id.localeCompare(b.id));
+
+        let csv = "\ufeff學號,姓名,日期,點名時間,狀態\n";
+        report.forEach(r => {
+            csv += `${r.id},${r.name},${r.date},${r.time},${r.status}\n`;
+        });
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
+        a.href = url;
         a.download = `Attendance_${today.replace(/\//g,'-')}.csv`;
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
     }
 
     function clearDailyData() {
