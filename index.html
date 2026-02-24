@@ -19,16 +19,18 @@
         .tag-present { background: #28a745; }
         .tag-absent { background: #dc3545; }
         .tag-guest { background: #f39c12; }
-        button { padding: 12px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; width: 100%; margin-top: 10px; }
-        .btn-export { background: #007bff; color: white; }
+        button { padding: 12px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; width: 100%; margin-top: 10px; transition: 0.2s; }
+        .btn-export { background: #007bff; color: white; margin-top: 20px; }
+        .btn-clear { background: #6c757d; color: white; font-size: 14px; margin-top: 10px; }
+        .btn-clear:hover { background: #5a6268; }
+        .btn-export:hover { background: #0069d9; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2>🎓 點名系統 (GitHub CSV 同步版)</h2>
+    <h2>🎓 點名系統</h2>
     <div id="loadStatus" class="status-bar status-loading">正在從 GitHub 載入名單 (list.csv)...</div>
-    
     <input type="text" id="studentId" placeholder="輸入學號後按 Enter..." autofocus>
 </div>
 
@@ -43,29 +45,33 @@
     </div>
 </div>
 
-<button class="btn-export" onclick="exportResults()">📦 匯出點名報表</button>
+<div style="padding-bottom: 50px;">
+    <button class="btn-export" onclick="exportResults()">📦 匯出點名報表 (CSV)</button>
+    <button class="btn-clear" onclick="clearDailyData()">⚠️ 清除本次點名紀錄 (重置)</button>
+</div>
 
 <script>
-    let masterList = {}; // 儲存從 CSV 讀取的名單
+    let masterList = {}; 
     let attendance = JSON.parse(localStorage.getItem('gh_attendance')) || [];
 
-    // 1. 自動從 GitHub 讀取同目錄下的 list.csv
+    // 自動讀取同目錄下的 list.csv
     async function loadMasterList() {
         const statusDiv = document.getElementById('loadStatus');
         try {
-            // 使用相對路徑抓取同一個 Repo 裡的 list.csv
-            const response = await fetch('list.csv');
+            // 加入時間戳避免瀏覽器快取舊名單
+            const response = await fetch('list.csv?t=' + new Date().getTime());
             if (!response.ok) throw new Error('找不到 list.csv 檔案');
             
             const text = await response.text();
             const rows = text.split(/\r?\n/);
             
+            masterList = {}; // 清空舊名單
             rows.forEach(row => {
                 const cols = row.split(',');
                 if (cols.length >= 2) {
                     const id = cols[0].trim().toUpperCase();
                     const name = cols[1].trim();
-                    if (id && id !== "學號") masterList[id] = name;
+                    if (id && id !== "學號" && id !== "ID") masterList[id] = name;
                 }
             });
 
@@ -79,7 +85,6 @@
         }
     }
 
-    // 2. 點名邏輯
     function checkIn() {
         const input = document.getElementById('studentId');
         const id = input.value.trim().toUpperCase();
@@ -101,7 +106,6 @@
         updateUI();
     }
 
-    // 3. 更新介面
     function updateUI() {
         const checkInBox = document.getElementById('checkInList');
         const absentBox = document.getElementById('absentList');
@@ -127,11 +131,18 @@
     }
 
     function exportResults() {
+        if (attendance.length === 0) {
+            alert("目前沒有點名資料可以匯出");
+            return;
+        }
         let csv = "\ufeff學號,姓名,時間,狀態\n";
         attendance.forEach(a => csv += `${a.id},${a.name},${a.time},${a.isGuest?'名單外':'已到'}\n`);
+        
+        const attendedIds = attendance.map(a => a.id);
         Object.keys(masterList).forEach(id => {
-            if (!attendance.map(a=>a.id).includes(id)) csv += `${id},${masterList[id]},,未到\n`;
+            if (!attendedIds.includes(id)) csv += `${id},${masterList[id]},,未到\n`;
         });
+
         const blob = new Blob([csv], { type: 'text/csv' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
@@ -139,9 +150,16 @@
         a.click();
     }
 
+    // 【新增功能】清除點名紀錄
+    function clearDailyData() {
+        if (confirm("確定要清空『今天的點名紀錄』嗎？\n(名單 list.csv 不會被刪除)")) {
+            attendance = [];
+            localStorage.removeItem('gh_attendance');
+            updateUI();
+        }
+    }
+
     document.getElementById('studentId').addEventListener('keypress', e => { if(e.key==='Enter') checkIn(); });
-    
-    // 啟動載入
     loadMasterList();
 </script>
 
