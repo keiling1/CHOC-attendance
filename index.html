@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>專業點名系統</title>
+    <title>專業點名系統 - 資料庫整合版</title>
     <style>
         body { font-family: -apple-system, sans-serif; max-width: 800px; margin: 10px auto; padding: 15px; background-color: #f8f9fa; }
         .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 15px; }
@@ -11,7 +11,6 @@
         @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
         .status-bar { font-size: 13px; padding: 8px; margin-bottom: 10px; border-radius: 5px; }
         .status-ok { background: #d4edda; color: #155724; }
-        /* 隱藏設定區樣式 */
         #secretConfig { display: none; background: #e9ecef; padding: 15px; border-radius: 8px; margin-bottom: 15px; font-size: 14px; border-left: 5px solid #6c757d; }
         .config-toggle { color: #ccc; cursor: pointer; text-align: right; font-size: 12px; margin-top: -10px; margin-bottom: 10px; }
         input[type="text"], input[type="time"] { padding: 10px; font-size: 16px; border: 2px solid #ddd; border-radius: 8px; box-sizing: border-box; }
@@ -19,7 +18,6 @@
         .item { padding: 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
         .tag { font-size: 11px; padding: 2px 6px; border-radius: 4px; color: white; background: #28a745; }
         .tag-absent { background: #dc3545; }
-        .tag-guest { background: #f39c12; }
         button { padding: 12px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; width: 100%; margin-top: 10px; }
         .btn-export { background: #007bff; color: white; margin-top: 20px; }
         .btn-clear { background: #6c757d; color: white; font-size: 14px; margin-top: 10px; }
@@ -27,40 +25,37 @@
 </head>
 <body>
 
-<div class="config-toggle" onclick="toggleConfig()">⚙️ 設定</div>
+<div class="config-toggle" onclick="toggleConfig()">⚙️ 內部設定</div>
 <div id="secretConfig" class="card">
-    <strong>🤫 內部判定時間設定 (學生看不見)</strong><br><br>
+    <strong>🤫 遲到門檻設定 (學生不可見)</strong><br><br>
     🕒 遲到門檻：<input type="time" id="lateTime" value="14:10"><br>
     🕒 大遲到門檻：<input type="time" id="veryLateTime" value="14:30">
 </div>
 
 <div class="card">
-    <h2>🎓 學生點名系統</h2>
-    <div id="loadStatus" class="status-bar status-loading">正在從 GitHub 載入名單 (list.csv)...</div>
+    <h2>🎓 課程點名系統</h2>
+    <div id="loadStatus" class="status-bar">載入中...</div>
     <input type="text" id="studentId" placeholder="輸入學號後按 Enter..." autofocus style="width:100%;">
 </div>
 
 <div class="grid">
     <div class="card">
-        <h3>📍 已到紀錄 (<span id="presentCount">0</span>)</h3>
+        <h3>📍 已到 (<span id="presentCount">0</span>)</h3>
         <div id="checkInList" class="list-box"></div>
     </div>
     <div class="card">
-        <h3>📋 未到名單 (<span id="absentCount">0</span>)</h3>
+        <h3>📋 未到 (<span id="absentCount">0</span>)</h3>
         <div id="absentList" class="list-box"></div>
     </div>
 </div>
 
-<div style="padding-bottom: 50px;">
-    <button class="btn-export" onclick="exportResults()">📦 匯出點名報表 (CSV)</button>
-    <button class="btn-clear" onclick="clearDailyData()">⚠️ 清除本次點名紀錄</button>
-</div>
+<button class="btn-export" onclick="exportResults()">📦 匯出當週報表 (Copy to DB)</button>
+<button class="btn-clear" onclick="clearDailyData()">⚠️ 清除本次紀錄</button>
 
 <script>
     let masterList = {}; 
     let attendance = JSON.parse(localStorage.getItem('gh_attendance')) || [];
 
-    // 隱藏設定開關
     function toggleConfig() {
         const config = document.getElementById('secretConfig');
         config.style.display = config.style.display === 'block' ? 'none' : 'block';
@@ -70,7 +65,7 @@
         const statusDiv = document.getElementById('loadStatus');
         try {
             const response = await fetch('list.csv?t=' + new Date().getTime());
-            if (!response.ok) throw new Error('找不到 list.csv 檔案');
+            if (!response.ok) throw new Error('找不到 list.csv');
             const text = await response.text();
             const rows = text.split(/\r?\n/);
             masterList = {};
@@ -83,10 +78,10 @@
                 }
             });
             statusDiv.className = "status-bar status-ok";
-            statusDiv.innerText = `✅ 名單同步成功！共 ${Object.keys(masterList).length} 人`;
+            statusDiv.innerText = `✅ 已同步 ${Object.keys(masterList).length} 人`;
             updateUI();
         } catch (err) {
-            statusDiv.innerText = `❌ 錯誤：${err.message}`;
+            statusDiv.innerText = `❌ 錯誤: ${err.message}`;
         }
     }
 
@@ -94,16 +89,13 @@
         const input = document.getElementById('studentId');
         const id = input.value.trim().toUpperCase();
         if (!id) return;
-
         if (attendance.some(a => a.id === id)) {
-            alert("此學號已點過名");
+            alert("已點過名");
         } else {
-            const name = masterList[id] || "名單外成員";
-            const isGuest = !masterList[id];
+            const name = masterList[id] || "名單外";
             const now = new Date();
             const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2,'0')}`;
-            
-            attendance.unshift({ id, name, time, isGuest });
+            attendance.unshift({ id, name, time });
             localStorage.setItem('gh_attendance', JSON.stringify(attendance));
         }
         input.value = "";
@@ -114,14 +106,12 @@
         const checkInBox = document.getElementById('checkInList');
         const absentBox = document.getElementById('absentList');
         document.getElementById('presentCount').innerText = attendance.length;
-
         checkInBox.innerHTML = attendance.map(a => `
             <div class="item">
-                <span><b>${a.id}</b> ${a.name} ${a.isGuest ? '<span class="tag tag-guest">名單外</span>' : ''}</span>
+                <span><b>${a.id}</b> ${a.name}</span>
                 <span class="tag">${a.time}</span>
             </div>
         `).join('');
-
         const attendedIds = attendance.map(a => a.id);
         const absentees = Object.keys(masterList).filter(id => !attendedIds.includes(id));
         document.getElementById('absentCount').innerText = absentees.length;
@@ -135,53 +125,43 @@
 
     function exportResults() {
         if (attendance.length === 0 && Object.keys(masterList).length === 0) return;
-
         const late = document.getElementById('lateTime').value;
         const veryLate = document.getElementById('veryLateTime').value;
+        const today = new Date().toLocaleDateString('zh-TW'); // YYYY/MM/DD
         
         let report = [];
-        // 處理名單內所有人
         Object.keys(masterList).forEach(id => {
             const record = attendance.find(a => a.id === id);
             if (record) {
                 let status = "已到";
                 if (record.time > veryLate) status = "大遲到";
                 else if (record.time > late) status = "遲到";
-                report.push({ id, name: masterList[id], time: record.time, status });
+                report.push({ id, name: masterList[id], date: today, time: record.time, status });
             } else {
-                report.push({ id, name: masterList[id], time: "", status: "未到" });
+                report.push({ id, name: masterList[id], date: today, time: "", status: "未到" });
             }
         });
 
-        // 處理名單外人員
-        attendance.filter(a => !masterList[a.id]).forEach(a => {
-            report.push({ id: a.id, name: "名單外", time: a.time, status: "名單外登記" });
-        });
-
-        // 依學號排序方便 XLOOKUP
         report.sort((a, b) => a.id.localeCompare(b.id));
-
-        let csv = "\ufeff學號,姓名,時間,狀態\n";
-        report.forEach(r => csv += `${r.id},${r.name},${r.time},${r.status}\n`);
+        let csv = "\ufeff學號,姓名,日期,點名時間,狀態\n";
+        report.forEach(r => csv += `${r.id},${r.name},${r.date},${r.time},${r.status}\n`);
 
         const blob = new Blob([csv], { type: 'text/csv' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = `點名完整報表_${new Date().toLocaleDateString()}.csv`;
+        a.download = `Attendance_${today.replace(/\//g,'-')}.csv`;
         a.click();
     }
 
     function clearDailyData() {
-        if (confirm("確定要清空『今天的點名紀錄』嗎？")) {
+        if (confirm("確定清除紀錄？")) {
             attendance = [];
             localStorage.removeItem('gh_attendance');
             updateUI();
         }
     }
-
     document.getElementById('studentId').addEventListener('keypress', e => { if(e.key==='Enter') checkIn(); });
     loadMasterList();
 </script>
-
 </body>
 </html>
