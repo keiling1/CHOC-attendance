@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>學生點名系統</title>
+    <style>
+        body { font-family: sans-serif; max-width: 500px; margin: 50px auto; padding: 20px; text-align: center; }
+        input { padding: 10px; width: 70%; font-size: 16px; }
+        button { padding: 10px 20px; cursor: pointer; background-color: #28a745; color: white; border: none; border-radius: 5px; }
+        #recordList { margin-top: 20px; text-align: left; border: 1px solid #ddd; padding: 10px; height: 300px; overflow-y: auto; }
+        .record-item { border-bottom: 1px solid #eee; padding: 5px 0; display: flex; justify-content: space-between; }
+        .export-btn { background-color: #007bff; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <h2>🎓 學生點名系統</h2>
+    
+    <div>
+        <input type="text" id="studentId" placeholder="輸入學號並按 Enter" autofocus>
+        <button onclick="addRecord()">點名</button>
+    </div>
+
+    <div id="recordList">
+        <strong>點名紀錄：</strong>
+        <div id="listContent"></div>
+    </div>
+
+    <button class="export-btn" onclick="exportCSV()">下載點名紀錄 (CSV)</button>
+
+    <script>
+        let records = [];
+
+        // 監聽 Enter 鍵
+        document.getElementById('studentId').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') addRecord();
+        });
+
+        function addRecord() {
+            const input = document.getElementById('studentId');
+            const id = input.value.trim();
+            
+            if (id === "") return;
+
+            const time = new Date().toLocaleTimeString();
+            const record = { id, time };
+            
+            records.unshift(record); // 新的排在前面
+            updateUI();
+            input.value = ""; // 清空輸入框
+            input.focus();
+        }
+
+        function updateUI() {
+            const container = document.getElementById('listContent');
+            container.innerHTML = records.map(r => `
+                <div class="record-item">
+                    <span>${r.id}</span>
+                    <span style="color: #888; font-size: 0.8em;">${r.time}</span>
+                </div>
+            `).join('');
+        }
+
+        function exportCSV() {
+            let csvContent = "data:text/csv;charset=utf-8,學號,時間\n";
+            records.forEach(r => {
+                csvContent += `${r.id},${r.time}\n`;
+            });
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `點名紀錄_${new Date().toLocaleDateString()}.csv`);
+            document.body.appendChild(link);
+            link.click();
+        }
+    </script>
+</body>
+</html>
