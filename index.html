@@ -3,178 +3,146 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>專業點名系統 - 支援名單外登記</title>
+    <title>GitHub 自動同步點名系統</title>
     <style>
-        body { font-family: -apple-system, sans-serif; max-width: 900px; margin: 20px auto; padding: 20px; background-color: #f8f9fa; color: #333; }
-        .container { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 20px; }
-        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
-        .full-width { grid-column: 1 / -1; }
-        h2, h3 { margin-top: 0; display: flex; justify-content: space-between; align-items: center; }
-        .input-group { display: flex; gap: 10px; margin-bottom: 15px; }
-        input[type="text"] { flex-grow: 1; padding: 12px; font-size: 18px; border: 2px solid #ddd; border-radius: 8px; }
-        button { padding: 10px 20px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; transition: 0.2s; }
-        .btn-primary { background: #007bff; color: white; }
-        .btn-danger { background: #dc3545; color: white; font-size: 12px; }
-        .list-box { height: 450px; overflow-y: auto; border: 1px solid #eee; padding: 10px; border-radius: 8px; background: #fafafa; }
+        body { font-family: -apple-system, sans-serif; max-width: 800px; margin: 10px auto; padding: 15px; background-color: #f8f9fa; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 15px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+        .status-bar { font-size: 13px; padding: 8px; margin-bottom: 10px; border-radius: 5px; }
+        .status-ok { background: #d4edda; color: #155724; }
+        .status-loading { background: #fff3cd; color: #856404; }
+        input[type="text"] { width: 100%; padding: 12px; font-size: 18px; border: 2px solid #ddd; border-radius: 8px; box-sizing: border-box; }
+        .list-box { height: 400px; overflow-y: auto; border: 1px solid #eee; padding: 10px; border-radius: 8px; background: #fafafa; }
         .item { padding: 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
-        .tag { font-size: 12px; padding: 3px 8px; border-radius: 4px; font-weight: normal; }
-        .tag-member { background: #d4edda; color: #155724; } /* 名單內 */
-        .tag-guest { background: #fff3cd; color: #856404; }  /* 名單外 */
-        .tag-absent { background: #f8d7da; color: #721c24; } /* 缺席 */
-        .config-section { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #eee; padding-bottom: 15px; margin-bottom: 20px; }
+        .tag { font-size: 11px; padding: 2px 6px; border-radius: 4px; color: white; }
+        .tag-present { background: #28a745; }
+        .tag-absent { background: #dc3545; }
+        .tag-guest { background: #f39c12; }
+        button { padding: 12px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; width: 100%; margin-top: 10px; }
+        .btn-export { background: #007bff; color: white; }
     </style>
 </head>
 <body>
 
-<div class="card full-width">
-    <h3>⚙️ 系統設定</h3>
-    <div class="config-section">
-        <div>
-            <label style="display:block; margin-bottom:5px;">匯入固定名單 (CSV: 學號,姓名)</label>
-            <input type="file" id="csvFile" accept=".csv" onchange="handleFileUpload(this)">
-        </div>
-        <button class="btn-danger" onclick="clearAllData()">清空所有紀錄與名單</button>
+<div class="card">
+    <h2>🎓 點名系統 (GitHub CSV 同步版)</h2>
+    <div id="loadStatus" class="status-bar status-loading">正在從 GitHub 載入名單 (list.csv)...</div>
+    
+    <input type="text" id="studentId" placeholder="輸入學號後按 Enter..." autofocus>
+</div>
+
+<div class="grid">
+    <div class="card">
+        <h3>📍 已到紀錄 (<span id="presentCount">0</span>)</h3>
+        <div id="checkInList" class="list-box"></div>
     </div>
-
-    <div class="container">
-        <div>
-            <h3>📍 現場點名</h3>
-            <div class="input-group">
-                <input type="text" id="studentId" placeholder="輸入學號後按 Enter..." autofocus>
-                <button class="btn-primary" onclick="checkIn()">確認點名</button>
-            </div>
-            <div id="checkInList" class="list-box"></div>
-            <button class="btn-primary" style="width:100%; margin-top:15px; font-size:18px;" onclick="exportResults()">📦 匯出完整報表 (Excel)</button>
-        </div>
-
-        <div>
-            <h3>📋 應到未到 (<span id="absentCount">0</span>)</h3>
-            <div id="absentList" class="list-box"></div>
-        </div>
+    <div class="card">
+        <h3>📋 未到名單 (<span id="absentCount">0</span>)</h3>
+        <div id="absentList" class="list-box"></div>
     </div>
 </div>
 
+<button class="btn-export" onclick="exportResults()">📦 匯出點名報表</button>
+
 <script>
-    let masterList = JSON.parse(localStorage.getItem('master_list')) || {}; 
-    let attendance = JSON.parse(localStorage.getItem('attendance_log')) || []; 
+    let masterList = {}; // 儲存從 CSV 讀取的名單
+    let attendance = JSON.parse(localStorage.getItem('gh_attendance')) || [];
 
-    window.onload = updateUI;
-
-    function handleFileUpload(input) {
-        const file = input.files[0];
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            const text = e.target.result;
+    // 1. 自動從 GitHub 讀取同目錄下的 list.csv
+    async function loadMasterList() {
+        const statusDiv = document.getElementById('loadStatus');
+        try {
+            // 使用相對路徑抓取同一個 Repo 裡的 list.csv
+            const response = await fetch('list.csv');
+            if (!response.ok) throw new Error('找不到 list.csv 檔案');
+            
+            const text = await response.text();
             const rows = text.split(/\r?\n/);
-            let newList = {};
+            
             rows.forEach(row => {
                 const cols = row.split(',');
                 if (cols.length >= 2) {
                     const id = cols[0].trim().toUpperCase();
                     const name = cols[1].trim();
-                    if (id && id !== "學號") newList[id] = name;
+                    if (id && id !== "學號") masterList[id] = name;
                 }
             });
-            masterList = newList;
-            localStorage.setItem('master_list', JSON.stringify(masterList));
-            alert(`名單匯入成功！共 ${Object.keys(masterList).length} 人`);
+
+            statusDiv.className = "status-bar status-ok";
+            statusDiv.innerText = `✅ 名單同步成功！共 ${Object.keys(masterList).length} 人`;
             updateUI();
-        };
-        reader.readAsText(file);
+        } catch (err) {
+            statusDiv.className = "status-bar";
+            statusDiv.style.background = "#f8d7da";
+            statusDiv.innerText = `❌ 錯誤：${err.message}。請確認 list.csv 已上傳。`;
+        }
     }
 
+    // 2. 點名邏輯
     function checkIn() {
         const input = document.getElementById('studentId');
         const id = input.value.trim().toUpperCase();
         if (!id) return;
 
         if (attendance.some(a => a.id === id)) {
-            alert("此學號已點過名！");
-            input.value = "";
-            return;
+            alert("此學號已點過名");
+        } else {
+            const name = masterList[id] || "名單外成員";
+            const isGuest = !masterList[id];
+            const now = new Date();
+            const time = `${now.getHours()}:${now.getMinutes().toString().padStart(2,'0')}`;
+            
+            attendance.unshift({ id, name, time, isGuest });
+            localStorage.setItem('gh_attendance', JSON.stringify(attendance));
         }
-
-        const isMember = !!masterList[id];
-        const name = isMember ? masterList[id] : "名單外成員";
-        const type = isMember ? "MEMBER" : "GUEST";
         
-        recordAttendance(id, name, type);
         input.value = "";
-        input.focus();
-    }
-
-    function recordAttendance(id, name, type) {
-        const now = new Date();
-        const time = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
-        attendance.unshift({ id, name, time, type });
-        localStorage.setItem('attendance_log', JSON.stringify(attendance));
         updateUI();
     }
 
+    // 3. 更新介面
     function updateUI() {
         const checkInBox = document.getElementById('checkInList');
         const absentBox = document.getElementById('absentList');
-        const absentCount = document.getElementById('absentCount');
-
-        // 已到清單 (包含名單外)
+        
+        document.getElementById('presentCount').innerText = attendance.length;
         checkInBox.innerHTML = attendance.map(a => `
             <div class="item">
-                <span>
-                    <b>${a.id}</b> ${a.name}
-                    ${a.type === 'GUEST' ? '<span class="tag tag-guest">名單外登記</span>' : ''}
-                </span>
-                <span class="tag tag-member">${a.time}</span>
+                <span><b>${a.id}</b> ${a.name} ${a.isGuest ? '<span class="tag tag-guest">名單外</span>' : ''}</span>
+                <span class="tag tag-present">${a.time}</span>
             </div>
         `).join('');
 
-        // 缺席名單 (僅計算 masterList 裡面的人)
         const attendedIds = attendance.map(a => a.id);
         const absentees = Object.keys(masterList).filter(id => !attendedIds.includes(id));
         
-        absentCount.innerText = absentees.length;
+        document.getElementById('absentCount').innerText = absentees.length;
         absentBox.innerHTML = absentees.map(id => `
-            <div class="item">
-                <span style="color:#999;">${id} ${masterList[id]}</span>
+            <div class="item" style="color:#999;">
+                <span>${id} ${masterList[id]}</span>
                 <span class="tag tag-absent">未到</span>
             </div>
         `).join('');
     }
 
     function exportResults() {
-        if (attendance.length === 0 && Object.keys(masterList).length === 0) return alert("目前無資料");
-
-        let csv = "\ufeff學號,姓名,點名時間,身分狀態\n";
-        
-        // 1. 先列出已點名的人 (含名單外)
-        attendance.forEach(a => {
-            const status = a.type === 'GUEST' ? "現場登記(非名單內)" : "已到";
-            csv += `${a.id},${a.name},${a.time},${status}\n`;
-        });
-
-        // 2. 再列出名單內但未到的人
-        const attendedIds = attendance.map(a => a.id);
+        let csv = "\ufeff學號,姓名,時間,狀態\n";
+        attendance.forEach(a => csv += `${a.id},${a.name},${a.time},${a.isGuest?'名單外':'已到'}\n`);
         Object.keys(masterList).forEach(id => {
-            if (!attendedIds.includes(id)) {
-                csv += `${id},${masterList[id]},,未到\n`;
-            }
+            if (!attendance.map(a=>a.id).includes(id)) csv += `${id},${masterList[id]},,未到\n`;
         });
-
         const blob = new Blob([csv], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url;
+        a.href = URL.createObjectURL(blob);
         a.download = `點名報表_${new Date().toLocaleDateString()}.csv`;
         a.click();
     }
 
-    function clearAllData() {
-        if (confirm("確定要清空所有資料嗎？")) {
-            localStorage.clear();
-            location.reload();
-        }
-    }
-
     document.getElementById('studentId').addEventListener('keypress', e => { if(e.key==='Enter') checkIn(); });
+    
+    // 啟動載入
+    loadMasterList();
 </script>
 
 </body>
