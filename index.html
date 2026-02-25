@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>專業點名系統 - 資料庫整合版</title>
+    <title>專業點名系統 - QR掃描與自動化版</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         body { font-family: -apple-system, sans-serif; max-width: 800px; margin: 10px auto; padding: 15px; background-color: #f8f9fa; }
         .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 15px; }
@@ -13,29 +14,37 @@
         .status-ok { background: #d4edda; color: #155724; }
         #secretConfig { display: none; background: #e9ecef; padding: 15px; border-radius: 8px; margin-bottom: 15px; font-size: 14px; border-left: 5px solid #6c757d; }
         .config-toggle { color: #ccc; cursor: pointer; text-align: right; font-size: 12px; margin-top: -10px; margin-bottom: 10px; }
-        input[type="text"], input[type="time"] { padding: 10px; font-size: 16px; border: 2px solid #ddd; border-radius: 8px; box-sizing: border-box; }
+        input[type="text"], input[type="time"] { padding: 10px; font-size: 16px; border: 2px solid #ddd; border-radius: 8px; box-sizing: border-box; width: 100%; }
         .list-box { height: 400px; overflow-y: auto; border: 1px solid #eee; padding: 10px; border-radius: 8px; background: #fafafa; }
         .item { padding: 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
         .tag { font-size: 11px; padding: 2px 6px; border-radius: 4px; color: white; background: #28a745; }
         .tag-absent { background: #dc3545; }
-        button { padding: 12px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; width: 100%; margin-top: 10px; }
-        .btn-export { background: #007bff; color: white; margin-top: 20px; }
-        .btn-clear { background: #6c757d; color: white; font-size: 14px; margin-top: 10px; }
+        button { padding: 12px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; width: 100%; margin-top: 10px; transition: 0.2s; }
+        .btn-export { background: #007bff; color: white; }
+        .btn-clear { background: #6c757d; color: white; font-size: 14px; }
+        /* QR 掃描器樣式 */
+        #reader { width: 100%; border-radius: 12px; overflow: hidden; margin-bottom: 10px; display: none; }
+        .btn-scan { background: #6f42c1; color: white; margin-bottom: 10px; }
     </style>
 </head>
 <body>
 
 <div class="config-toggle" onclick="toggleConfig()">⚙️ 內部設定</div>
 <div id="secretConfig" class="card">
-    <strong>🤫 遲到門檻設定 (學生不可見)</strong><br><br>
+    <strong>🤫 內部設定 (學生不可見)</strong><br><br>
     🕒 遲到門檻：<input type="time" id="lateTime" value="10:30"><br>
-    🕒 大遲到門檻：<input type="time" id="veryLateTime" value="11:00">
+    🕒 大遲到門檻：<input type="time" id="veryLateTime" value="11:00"><br>
+    🆔 學號長度：<input type="number" id="idLength" value="9" style="width:60px;"> (自動送出用)
 </div>
 
 <div class="card">
     <h2>🎓 課程點名系統</h2>
     <div id="loadStatus" class="status-bar">載入中...</div>
-    <input type="text" id="studentId" placeholder="輸入學號後按 Enter..." autofocus style="width:100%;">
+    
+    <button class="btn-scan" id="scanBtn" onclick="toggleScanner()">📷 開啟相機掃描</button>
+    <div id="reader"></div>
+
+    <input type="text" id="studentId" placeholder="手動輸入學號..." autofocus>
 </div>
 
 <div class="grid">
@@ -55,12 +64,53 @@
 <script>
     let masterList = {}; 
     let attendance = JSON.parse(localStorage.getItem('gh_attendance')) || [];
+    let html5QrCode;
 
     function toggleConfig() {
         const config = document.getElementById('secretConfig');
         config.style.display = config.style.display === 'block' ? 'none' : 'block';
     }
 
+    // --- QR Code 掃描功能 ---
+    function toggleScanner() {
+        const readerDiv = document.getElementById('reader');
+        const btn = document.getElementById('scanBtn');
+        
+        if (readerDiv.style.display === 'none' || !readerDiv.style.display) {
+            readerDiv.style.display = 'block';
+            btn.innerText = "❌ 關閉相機";
+            startScanner();
+        } else {
+            stopScanner();
+            readerDiv.style.display = 'none';
+            btn.innerText = "📷 開啟相機掃描";
+        }
+    }
+
+    function startScanner() {
+        html5QrCode = new Html5Qrcode("reader");
+        const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+        
+        html5QrCode.start({ facingMode: "environment" }, config, (decodedText) => {
+            // 處理掃描到的文字 (假設 QR 內容直接是學號或包含 id 參數的網址)
+            let id = decodedText;
+            if (id.includes("id=")) {
+                id = new URL(decodedText).searchParams.get("id");
+            }
+            document.getElementById('studentId').value = id;
+            checkIn(); // 掃描到即點名
+            stopScanner(); // 點完自動關閉相機節省資源
+            toggleScanner();
+        });
+    }
+
+    function stopScanner() {
+        if (html5QrCode) {
+            html5QrCode.stop().then(() => console.log("Scanner stopped."));
+        }
+    }
+
+    // --- 核心邏輯 ---
     async function loadMasterList() {
         const statusDiv = document.getElementById('loadStatus');
         try {
@@ -79,6 +129,14 @@
             });
             statusDiv.className = "status-bar status-ok";
             statusDiv.innerText = `✅ 已同步 ${Object.keys(masterList).length} 人`;
+            
+            // 處理網址參數點名 (?id=學號)
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('id')) {
+                document.getElementById('studentId').value = urlParams.get('id');
+                checkIn();
+            }
+            
             updateUI();
         } catch (err) {
             statusDiv.innerText = `❌ 錯誤: ${err.message}`;
@@ -89,18 +147,38 @@
         const input = document.getElementById('studentId');
         const id = input.value.trim().toUpperCase();
         if (!id) return;
+        
         if (attendance.some(a => a.id === id)) {
-            alert("已點過名");
+            // 已點過名不報錯，只提示（或是維持靜默方便快速操作）
+            console.log("已點過名");
         } else {
             const name = masterList[id] || "名單外";
             const now = new Date();
             const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2,'0')}`;
             attendance.unshift({ id, name, time });
             localStorage.setItem('gh_attendance', JSON.stringify(attendance));
+            // 震動回饋 (如果手機支援)
+            if (navigator.vibrate) navigator.vibrate(50);
         }
         input.value = "";
+        input.style.borderColor = "#ddd";
         updateUI();
     }
+
+    // 監聽輸入框：自動送出與顏色判定
+    document.getElementById('studentId').addEventListener('input', function() {
+        const id = this.value.trim().toUpperCase();
+        const targetLen = parseInt(document.getElementById('idLength').value);
+        
+        if (id.length >= targetLen) {
+            if (masterList[id]) {
+                this.style.borderColor = "#28a745"; // 綠色：在名單內
+                setTimeout(() => { if(this.value.toUpperCase() === id) checkIn(); }, 300);
+            } else {
+                this.style.borderColor = "#f39c12"; // 橘色：名單外，不自動送出
+            }
+        }
+    });
 
     function updateUI() {
         const checkInBox = document.getElementById('checkInList');
@@ -128,14 +206,11 @@
             alert("目前沒有資料可以匯出");
             return;
         }
-
         const late = document.getElementById('lateTime').value;
         const veryLate = document.getElementById('veryLateTime').value;
         const today = new Date().toLocaleDateString('zh-TW'); 
-        
         let report = [];
 
-        // 1. 處理名單內所有人 (包含未到者)
         Object.keys(masterList).forEach(id => {
             const record = attendance.find(a => a.id === id);
             if (record) {
@@ -148,24 +223,17 @@
             }
         });
 
-        // 2. 【核心修正】處理名單外點名的人 (Guest)
-        // 找出那些點了名但不在 masterList 裡的學號
         const guests = attendance.filter(a => !masterList[a.id]);
         guests.forEach(a => {
             let status = "已到(名單外)";
             if (a.time > veryLate) status = "大遲到(名單外)";
             else if (a.time > late) status = "遲到(名單外)";
-            
             report.push({ id: a.id, name: "現場登記/名單外", date: today, time: a.time, status: status });
         });
 
-        // 依學號排序，讓資料整齊
         report.sort((a, b) => a.id.localeCompare(b.id));
-
         let csv = "\ufeff學號,姓名,日期,點名時間,狀態\n";
-        report.forEach(r => {
-            csv += `${r.id},${r.name},${r.date},${r.time},${r.status}\n`;
-        });
+        report.forEach(r => csv += `${r.id},${r.name},${r.date},${r.time},${r.status}\n`);
 
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
@@ -184,6 +252,7 @@
             updateUI();
         }
     }
+    
     document.getElementById('studentId').addEventListener('keypress', e => { if(e.key==='Enter') checkIn(); });
     loadMasterList();
 </script>
