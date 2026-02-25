@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>專業點名系統 - Barcode 優化版</title>
+    <title>專業點名系統 - 最終整合版</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         body { font-family: -apple-system, sans-serif; max-width: 800px; margin: 10px auto; padding: 15px; background-color: #f8f9fa; }
@@ -25,6 +25,7 @@
         #reader { width: 100%; border-radius: 12px; overflow: hidden; margin-bottom: 10px; display: none; background: #000; }
         .btn-scan { background: #6f42c1; color: white; flex: 1; }
         .btn-torch { background: #f39c12; color: white; flex: 0.4; display: none; }
+        #zoomContainer { display:none; margin: 10px 0; background: #eee; padding: 15px; border-radius: 8px; border: 1px solid #ccc; }
     </style>
 </head>
 <body>
@@ -45,6 +46,12 @@
         <button class="btn-scan" id="scanBtn" onclick="toggleScanner()">📷 開啟相機掃描 Barcode</button>
         <button class="btn-torch" id="torchBtn" onclick="toggleTorch()">💡 手電筒</button>
     </div>
+
+    <div id="zoomContainer">
+        <label style="display:block; margin-bottom:5px; font-weight:bold;">🔍 數位縮放 (對不到焦請拿遠並拉大):</label>
+        <input type="range" id="zoomRange" min="1" max="5" step="0.1" value="1" style="width: 100%; height: 25px;">
+    </div>
+
     <div id="reader"></div>
 
     <input type="text" id="studentId" placeholder="手動輸入或掃描結果..." autofocus>
@@ -69,13 +76,13 @@
     let attendance = JSON.parse(localStorage.getItem('gh_attendance')) || [];
     let html5QrCode;
     let isTorchOn = false;
+    let videoTrack = null;
 
     function toggleConfig() {
         const config = document.getElementById('secretConfig');
         config.style.display = config.style.display === 'block' ? 'none' : 'block';
     }
 
-    // --- 改良版 Barcode 掃描功能 ---
     function toggleScanner() {
         const readerDiv = document.getElementById('reader');
         const btn = document.getElementById('scanBtn');
@@ -97,24 +104,38 @@
             Html5QrcodeSupportedFormats.EAN_13
         ];
         html5QrCode = new Html5Qrcode("reader");
-        // 寬扁形狀有利於條碼對焦
-        const config = { fps: 20, qrbox: { width: 320, height: 120 } }; 
+        const config = { fps: 25, qrbox: { width: 320, height: 120 } }; 
+
         html5QrCode.start({ facingMode: "environment" }, config, (decodedText) => {
             document.getElementById('studentId').value = decodedText.trim().toUpperCase();
             checkIn();
             if (navigator.vibrate) navigator.vibrate(100);
         }).then(() => {
-            const track = html5QrCode.getRunningTrack();
-            if (track.getCapabilities().torch) {
+            videoTrack = html5QrCode.getRunningTrack();
+            const capabilities = videoTrack.getCapabilities();
+
+            if (capabilities.torch) {
                 document.getElementById('torchBtn').style.display = 'block';
+            }
+
+            if (capabilities.zoom) {
+                const zoomContainer = document.getElementById('zoomContainer');
+                const zoomRange = document.getElementById('zoomRange');
+                zoomContainer.style.display = 'block';
+                zoomRange.min = capabilities.zoom.min;
+                zoomRange.max = capabilities.zoom.max;
+                zoomRange.step = capabilities.zoom.step;
+                zoomRange.oninput = () => {
+                    videoTrack.applyConstraints({ advanced: [{ zoom: zoomRange.value }] });
+                };
             }
         }).catch(err => console.error(err));
     }
 
     function toggleTorch() {
-        const track = html5QrCode.getRunningTrack();
+        if (!videoTrack) return;
         isTorchOn = !isTorchOn;
-        track.applyConstraints({ advanced: [{ torch: isTorchOn }] });
+        videoTrack.applyConstraints({ advanced: [{ torch: isTorchOn }] });
         document.getElementById('torchBtn').innerText = isTorchOn ? "🚫 關閉" : "💡 手電筒";
     }
 
@@ -122,12 +143,13 @@
         if (html5QrCode) {
             html5QrCode.stop().then(() => {
                 document.getElementById('torchBtn').style.display = 'none';
+                document.getElementById('zoomContainer').style.display = 'none';
                 isTorchOn = false;
+                videoTrack = null;
             }).catch(err => console.error(err));
         }
     }
 
-    // --- 核心點名邏輯 ---
     async function loadMasterList() {
         const statusDiv = document.getElementById('loadStatus');
         try {
@@ -170,16 +192,15 @@
         updateUI();
     }
 
-    // 智慧偵測：符合長度且名單內自動送出
     document.getElementById('studentId').addEventListener('input', function() {
         const id = this.value.trim().toUpperCase();
         const targetLen = parseInt(document.getElementById('idLength').value);
         if (id.length >= targetLen) {
             if (masterList[id]) {
-                this.style.borderColor = "#28a745"; // 在名單內：變綠色
+                this.style.borderColor = "#28a745";
                 setTimeout(() => { if(this.value.toUpperCase() === id) checkIn(); }, 400);
             } else {
-                this.style.borderColor = "#f39c12"; // 名單外：變橘色
+                this.style.borderColor = "#f39c12";
             }
         }
     });
