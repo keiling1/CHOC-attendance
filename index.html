@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>專業點名系統 - 最終整合版</title>
+    <title>專業點名系統 - QR掃描與自動化版</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         body { font-family: -apple-system, sans-serif; max-width: 800px; margin: 10px auto; padding: 15px; background-color: #f8f9fa; }
@@ -12,147 +12,210 @@
         @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
         .status-bar { font-size: 13px; padding: 8px; margin-bottom: 10px; border-radius: 5px; }
         .status-ok { background: #d4edda; color: #155724; }
-        #secretConfig { display: none; background: #e9ecef; padding: 15px; border-radius: 8px; margin-bottom: 15px; font-size: 14px; }
-        .config-toggle { color: #ccc; cursor: pointer; text-align: right; font-size: 12px; }
-        input[type="text"], input[type="time"] { padding: 12px; font-size: 18px; border: 2px solid #ddd; border-radius: 8px; width: 100%; box-sizing: border-box; }
-        .list-box { height: 350px; overflow-y: auto; border: 1px solid #eee; padding: 10px; border-radius: 8px; background: #fafafa; }
-        .item { padding: 8px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        #secretConfig { display: none; background: #e9ecef; padding: 15px; border-radius: 8px; margin-bottom: 15px; font-size: 14px; border-left: 5px solid #6c757d; }
+        .config-toggle { color: #ccc; cursor: pointer; text-align: right; font-size: 12px; margin-top: -10px; margin-bottom: 10px; }
+        input[type="text"], input[type="time"] { padding: 10px; font-size: 16px; border: 2px solid #ddd; border-radius: 8px; box-sizing: border-box; width: 100%; }
+        .list-box { height: 400px; overflow-y: auto; border: 1px solid #eee; padding: 10px; border-radius: 8px; background: #fafafa; }
+        .item { padding: 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
         .tag { font-size: 11px; padding: 2px 6px; border-radius: 4px; color: white; background: #28a745; }
-        .btn-export { background: #007bff; color: white; width: 100%; padding: 12px; border: none; border-radius: 6px; font-weight: bold; margin-top: 10px; }
-        #reader { width: 100%; border-radius: 12px; overflow: hidden; display: none; margin-top: 10px; }
-        #zoomContainer { display:none; margin: 10px 0; background: #eee; padding: 10px; border-radius: 8px; }
+        .tag-absent { background: #dc3545; }
+        button { padding: 12px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; width: 100%; margin-top: 10px; transition: 0.2s; }
+        .btn-export { background: #007bff; color: white; }
+        .btn-clear { background: #6c757d; color: white; font-size: 14px; }
+        /* QR 掃描器樣式 */
+        #reader { width: 100%; border-radius: 12px; overflow: hidden; margin-bottom: 10px; display: none; }
+        .btn-scan { background: #6f42c1; color: white; margin-bottom: 10px; }
     </style>
 </head>
 <body>
 
 <div class="config-toggle" onclick="toggleConfig()">⚙️ 內部設定</div>
 <div id="secretConfig" class="card">
-    <strong>🤫 判定時間與自動化設定</strong><br><br>
-    🕒 遲到：<input type="time" id="lateTime" value="10:30">
-    🕒 大遲到：<input type="time" id="veryLateTime" value="11:00"><br>
-    🆔 學號長度：<input type="number" id="idLength" value="9" style="width:60px;">
+    <strong>🤫 內部設定 (學生不可見)</strong><br><br>
+    🕒 遲到門檻：<input type="time" id="lateTime" value="10:30"><br>
+    🕒 大遲到門檻：<input type="time" id="veryLateTime" value="11:00"><br>
+    🆔 學號長度：<input type="number" id="idLength" value="9" style="width:60px;"> (自動送出用)
 </div>
 
 <div class="card">
     <h2>🎓 課程點名系統</h2>
     <div id="loadStatus" class="status-bar">載入中...</div>
-    <button onclick="toggleScanner()" style="background:#6f42c1; color:white; padding:10px; width:100%; border:none; border-radius:6px; font-weight:bold;">📷 開啟條碼掃描</button>
-    <div id="zoomContainer">
-        <label>🔍 縮放 (對不到焦請拿遠並放大):</label>
-        <input type="range" id="zoomRange" min="1" max="5" step="0.1" value="1" style="width:100%;">
-    </div>
+    
+    <button class="btn-scan" id="scanBtn" onclick="toggleScanner()">📷 開啟相機掃描</button>
     <div id="reader"></div>
-    <input type="text" id="studentId" placeholder="手動輸入或掃描結果..." autofocus style="margin-top:10px;">
+
+    <input type="text" id="studentId" placeholder="手動輸入學號..." autofocus>
 </div>
 
 <div class="grid">
-    <div class="card"><h3>📍 已到 (<span id="presentCount">0</span>)</h3><div id="checkInList" class="list-box"></div></div>
-    <div class="card"><h3>📋 未到 (<span id="absentCount">0</span>)</h3><div id="absentList" class="list-box"></div></div>
+    <div class="card">
+        <h3>📍 已到 (<span id="presentCount">0</span>)</h3>
+        <div id="checkInList" class="list-box"></div>
+    </div>
+    <div class="card">
+        <h3>📋 未到 (<span id="absentCount">0</span>)</h3>
+        <div id="absentList" class="list-box"></div>
+    </div>
 </div>
 
-<button class="btn-export" onclick="exportResults()">📦 匯出當週報表 (手動貼至 Excel)</button>
+<button class="btn-export" onclick="exportResults()">📦 匯出當週報表 (Copy to DB)</button>
+<button class="btn-clear" onclick="clearDailyData()">⚠️ 清除本次紀錄</button>
 
 <script>
     let masterList = {}; 
     let attendance = JSON.parse(localStorage.getItem('gh_attendance')) || [];
     let html5QrCode;
-    let videoTrack = null;
 
-    function toggleConfig() { const s = document.getElementById('secretConfig'); s.style.display = s.style.display === 'block' ? 'none' : 'block'; }
-
-    function toggleScanner() {
-        const r = document.getElementById('reader');
-        if (r.style.display === 'none' || !r.style.display) { r.style.display = 'block'; startScanner(); }
-        else { stopScanner(); r.style.display = 'none'; }
+    function toggleConfig() {
+        const config = document.getElementById('secretConfig');
+        config.style.display = config.style.display === 'block' ? 'none' : 'block';
     }
 
-    function startScanner() {
-        html5QrCode = new Html5Qrcode("reader");
-        const config = { fps: 20, qrbox: { width: 300, height: 120 } };
-        html5QrCode.start({ facingMode: "environment" }, config, (text) => {
-            document.getElementById('studentId').value = text.trim().toUpperCase();
-            checkIn();
-        }).then(() => {
-            videoTrack = html5QrCode.getRunningTrack();
-            const cap = videoTrack.getCapabilities();
-            if (cap.zoom) {
-                document.getElementById('zoomContainer').style.display = 'block';
-                const z = document.getElementById('zoomRange');
-                z.min = cap.zoom.min; z.max = cap.zoom.max; z.oninput = () => { videoTrack.applyConstraints({advanced: [{zoom: z.value}]}); };
-            }
-        });
-    }
-
-    function stopScanner() { if (html5QrCode) html5QrCode.stop(); }
-
+    // --- 核心邏輯 ---
     async function loadMasterList() {
+        const statusDiv = document.getElementById('loadStatus');
         try {
-            const resp = await fetch('list.csv?t=' + new Date().getTime());
-            const text = await resp.text();
-            text.split(/\r?\n/).forEach(row => {
+            const response = await fetch('list.csv?t=' + new Date().getTime());
+            if (!response.ok) throw new Error('找不到 list.csv');
+            const text = await response.text();
+            const rows = text.split(/\r?\n/);
+            masterList = {};
+            rows.forEach(row => {
                 const cols = row.split(',');
                 if (cols.length >= 2) {
                     const id = cols[0].trim().toUpperCase();
-                    if (id && id !== "學號") masterList[id] = cols[1].trim();
+                    const name = cols[1].trim();
+                    if (id && id !== "學號") masterList[id] = name;
                 }
             });
-            document.getElementById('loadStatus').innerText = `✅ 已同步 ${Object.keys(masterList).length} 人`;
+            statusDiv.className = "status-bar status-ok";
+            statusDiv.innerText = `✅ 已同步 ${Object.keys(masterList).length} 人`;
+            
+            // 處理網址參數點名 (?id=學號)
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('id')) {
+                document.getElementById('studentId').value = urlParams.get('id');
+                checkIn();
+            }
+            
             updateUI();
-        } catch (e) { document.getElementById('loadStatus').innerText = "❌ 載入失敗"; }
+        } catch (err) {
+            statusDiv.innerText = `❌ 錯誤: ${err.message}`;
+        }
     }
 
     function checkIn() {
         const input = document.getElementById('studentId');
         const id = input.value.trim().toUpperCase();
-        if (!id || attendance.some(a => a.id === id)) { input.value = ""; return; }
-        const now = new Date();
-        const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2,'0')}`;
-        attendance.unshift({ id, name: masterList[id] || "名單外", time });
-        localStorage.setItem('gh_attendance', JSON.stringify(attendance));
-        input.value = ""; updateUI();
+        if (!id) return;
+        
+        if (attendance.some(a => a.id === id)) {
+            // 已點過名不報錯，只提示（或是維持靜默方便快速操作）
+            console.log("已點過名");
+        } else {
+            const name = masterList[id] || "名單外";
+            const now = new Date();
+            const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+            attendance.unshift({ id, name, time });
+            localStorage.setItem('gh_attendance', JSON.stringify(attendance));
+            // 震動回饋 (如果手機支援)
+            if (navigator.vibrate) navigator.vibrate(50);
+        }
+        input.value = "";
+        input.style.borderColor = "#ddd";
+        updateUI();
     }
 
+    // 監聽輸入框：自動送出與顏色判定
     document.getElementById('studentId').addEventListener('input', function() {
         const id = this.value.trim().toUpperCase();
-        if (id.length >= document.getElementById('idLength').value && masterList[id]) {
-            this.style.borderColor = "#28a745";
-            setTimeout(() => { if(this.value.toUpperCase() === id) checkIn(); }, 400);
+        const targetLen = parseInt(document.getElementById('idLength').value);
+        
+        if (id.length >= targetLen) {
+            if (masterList[id]) {
+                this.style.borderColor = "#28a745"; // 綠色：在名單內
+                setTimeout(() => { if(this.value.toUpperCase() === id) checkIn(); }, 300);
+            } else {
+                this.style.borderColor = "#f39c12"; // 橘色：名單外，不自動送出
+            }
         }
     });
 
     function updateUI() {
+        const checkInBox = document.getElementById('checkInList');
+        const absentBox = document.getElementById('absentList');
         document.getElementById('presentCount').innerText = attendance.length;
-        document.getElementById('checkInList').innerHTML = attendance.map(a => `<div class="item"><span><b>${a.id}</b> ${a.name}</span><span class="tag">${a.time}</span></div>`).join('');
+        checkInBox.innerHTML = attendance.map(a => `
+            <div class="item">
+                <span><b>${a.id}</b> ${a.name}</span>
+                <span class="tag">${a.time}</span>
+            </div>
+        `).join('');
         const attendedIds = attendance.map(a => a.id);
         const absentees = Object.keys(masterList).filter(id => !attendedIds.includes(id));
         document.getElementById('absentCount').innerText = absentees.length;
-        document.getElementById('absentList').innerHTML = absentees.map(id => `<div class="item" style="color:#999;"><span>${id} ${masterList[id]}</span></div>`).join('');
+        absentBox.innerHTML = absentees.map(id => `
+            <div class="item" style="color:#999;">
+                <span>${id} ${masterList[id]}</span>
+                <span class="tag tag-absent">未到</span>
+            </div>
+        `).join('');
     }
 
     function exportResults() {
+        if (attendance.length === 0 && Object.keys(masterList).length === 0) {
+            alert("目前沒有資料可以匯出");
+            return;
+        }
         const late = document.getElementById('lateTime').value;
         const veryLate = document.getElementById('veryLateTime').value;
-        const today = new Date().toLocaleDateString('zh-TW');
-        let csv = "\ufeff學號,姓名,日期,時間,狀態\n";
-        
+        const today = new Date().toLocaleDateString('zh-TW'); 
+        let report = [];
+
         Object.keys(masterList).forEach(id => {
-            const rec = attendance.find(a => a.id === id);
-            let status = "未到";
-            if (rec) {
-                status = rec.time > veryLate ? "大遲到" : (rec.time > late ? "遲到" : "已到");
+            const record = attendance.find(a => a.id === id);
+            if (record) {
+                let status = "已到";
+                if (record.time > veryLate) status = "大遲到";
+                else if (record.time > late) status = "遲到";
+                report.push({ id, name: masterList[id], date: today, time: record.time, status });
+            } else {
+                report.push({ id, name: masterList[id], date: today, time: "", status: "未到" });
             }
-            csv += `${id},${masterList[id]},${today},${rec ? rec.time : ""},${status}\n`;
         });
 
+        const guests = attendance.filter(a => !masterList[a.id]);
+        guests.forEach(a => {
+            let status = "已到(名單外)";
+            if (a.time > veryLate) status = "大遲到(名單外)";
+            else if (a.time > late) status = "遲到(名單外)";
+            report.push({ id: a.id, name: "現場登記/名單外", date: today, time: a.time, status: status });
+        });
+
+        report.sort((a, b) => a.id.localeCompare(b.id));
+        let csv = "\ufeff學號,姓名,日期,點名時間,狀態\n";
+        report.forEach(r => csv += `${r.id},${r.name},${r.date},${r.time},${r.status}\n`);
+
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
+        a.href = url;
         a.download = `Attendance_${today.replace(/\//g,'-')}.csv`;
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
     }
 
-    loadMasterList();
+    function clearDailyData() {
+        if (confirm("確定清除紀錄？")) {
+            attendance = [];
+            localStorage.removeItem('gh_attendance');
+            updateUI();
+        }
+    }
+    
     document.getElementById('studentId').addEventListener('keypress', e => { if(e.key==='Enter') checkIn(); });
+    loadMasterList();
 </script>
 </body>
 </html>
