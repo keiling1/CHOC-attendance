@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>專業點名系統 - Barcode 掃描與自動化版</title>
+    <title>專業點名系統 - Barcode 優化版</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         body { font-family: -apple-system, sans-serif; max-width: 800px; margin: 10px auto; padding: 15px; background-color: #f8f9fa; }
@@ -23,7 +23,8 @@
         .btn-export { background: #007bff; color: white; }
         .btn-clear { background: #6c757d; color: white; font-size: 14px; }
         #reader { width: 100%; border-radius: 12px; overflow: hidden; margin-bottom: 10px; display: none; background: #000; }
-        .btn-scan { background: #6f42c1; color: white; margin-bottom: 10px; }
+        .btn-scan { background: #6f42c1; color: white; flex: 1; }
+        .btn-torch { background: #f39c12; color: white; flex: 0.4; display: none; }
     </style>
 </head>
 <body>
@@ -33,14 +34,17 @@
     <strong>🤫 內部設定 (學生不可見)</strong><br><br>
     🕒 遲到門檻：<input type="time" id="lateTime" value="10:30"><br>
     🕒 大遲到門檻：<input type="time" id="veryLateTime" value="11:00"><br>
-    🆔 學號長度：<input type="number" id="idLength" value="9" style="width:60px;"> (自動送出判定)
+    🆔 學號長度：<input type="number" id="idLength" value="9" style="width:60px;"> (自動判定用)
 </div>
 
 <div class="card">
     <h2>🎓 課程點名系統</h2>
     <div id="loadStatus" class="status-bar">載入中...</div>
     
-    <button class="btn-scan" id="scanBtn" onclick="toggleScanner()">📷 開啟相機掃描 Barcode</button>
+    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+        <button class="btn-scan" id="scanBtn" onclick="toggleScanner()">📷 開啟相機掃描 Barcode</button>
+        <button class="btn-torch" id="torchBtn" onclick="toggleTorch()">💡 手電筒</button>
+    </div>
     <div id="reader"></div>
 
     <input type="text" id="studentId" placeholder="手動輸入或掃描結果..." autofocus>
@@ -64,17 +68,17 @@
     let masterList = {}; 
     let attendance = JSON.parse(localStorage.getItem('gh_attendance')) || [];
     let html5QrCode;
+    let isTorchOn = false;
 
     function toggleConfig() {
         const config = document.getElementById('secretConfig');
         config.style.display = config.style.display === 'block' ? 'none' : 'block';
     }
 
-    // --- Barcode / QR 掃描功能 ---
+    // --- 改良版 Barcode 掃描功能 ---
     function toggleScanner() {
         const readerDiv = document.getElementById('reader');
         const btn = document.getElementById('scanBtn');
-        
         if (readerDiv.style.display === 'none' || !readerDiv.style.display) {
             readerDiv.style.display = 'block';
             btn.innerText = "❌ 關閉相機";
@@ -87,32 +91,43 @@
     }
 
     function startScanner() {
-        // 設定支援條碼格式
         const formatsToSupport = [
-            Html5QrcodeSupportedFormats.QR_CODE,
             Html5QrcodeSupportedFormats.CODE_128,
             Html5QrcodeSupportedFormats.CODE_39,
             Html5QrcodeSupportedFormats.EAN_13
         ];
-        
         html5QrCode = new Html5Qrcode("reader");
-        const config = { fps: 15, qrbox: { width: 300, height: 150 } }; // 調整掃描框比例以適應條碼
-        
+        // 寬扁形狀有利於條碼對焦
+        const config = { fps: 20, qrbox: { width: 320, height: 120 } }; 
         html5QrCode.start({ facingMode: "environment" }, config, (decodedText) => {
             document.getElementById('studentId').value = decodedText.trim().toUpperCase();
-            checkIn(); // 掃描成功自動執行點名邏輯
-            // 掃描成功後短暫震動回饋
+            checkIn();
             if (navigator.vibrate) navigator.vibrate(100);
-        });
+        }).then(() => {
+            const track = html5QrCode.getRunningTrack();
+            if (track.getCapabilities().torch) {
+                document.getElementById('torchBtn').style.display = 'block';
+            }
+        }).catch(err => console.error(err));
+    }
+
+    function toggleTorch() {
+        const track = html5QrCode.getRunningTrack();
+        isTorchOn = !isTorchOn;
+        track.applyConstraints({ advanced: [{ torch: isTorchOn }] });
+        document.getElementById('torchBtn').innerText = isTorchOn ? "🚫 關閉" : "💡 手電筒";
     }
 
     function stopScanner() {
         if (html5QrCode) {
-            html5QrCode.stop().catch(err => console.error(err));
+            html5QrCode.stop().then(() => {
+                document.getElementById('torchBtn').style.display = 'none';
+                isTorchOn = false;
+            }).catch(err => console.error(err));
         }
     }
 
-    // --- 核心邏輯 ---
+    // --- 核心點名邏輯 ---
     async function loadMasterList() {
         const statusDiv = document.getElementById('loadStatus');
         try {
@@ -141,7 +156,6 @@
         const input = document.getElementById('studentId');
         const id = input.value.trim().toUpperCase();
         if (!id) return;
-        
         if (attendance.some(a => a.id === id)) {
             console.log("已點過名");
         } else {
@@ -156,17 +170,16 @@
         updateUI();
     }
 
-    // 監聽輸入框：長度達到時智慧判定
+    // 智慧偵測：符合長度且名單內自動送出
     document.getElementById('studentId').addEventListener('input', function() {
         const id = this.value.trim().toUpperCase();
         const targetLen = parseInt(document.getElementById('idLength').value);
-        
         if (id.length >= targetLen) {
             if (masterList[id]) {
                 this.style.borderColor = "#28a745"; // 在名單內：變綠色
                 setTimeout(() => { if(this.value.toUpperCase() === id) checkIn(); }, 400);
             } else {
-                this.style.borderColor = "#f39c12"; // 名單外：變橘色，不自動送出
+                this.style.borderColor = "#f39c12"; // 名單外：變橘色
             }
         }
     });
@@ -196,9 +209,9 @@
         if (attendance.length === 0 && Object.keys(masterList).length === 0) return;
         const late = document.getElementById('lateTime').value;
         const veryLate = document.getElementById('veryLateTime').value;
-        const today = new Date().toLocaleDateString('zh-TW'); 
+        const now = new Date();
+        const today = `${now.getFullYear()}/${(now.getMonth()+1).toString().padStart(2,'0')}/${now.getDate().toString().padStart(2,'0')}`;
         let report = [];
-
         Object.keys(masterList).forEach(id => {
             const record = attendance.find(a => a.id === id);
             if (record) {
@@ -210,23 +223,18 @@
                 report.push({ id, name: masterList[id], date: today, time: "", status: "未到" });
             }
         });
-
-        const guests = attendance.filter(a => !masterList[a.id]);
-        guests.forEach(a => {
+        attendance.filter(a => !masterList[a.id]).forEach(a => {
             let status = "已到(名單外)";
             if (a.time > veryLate) status = "大遲到(名單外)";
             else if (a.time > late) status = "遲到(名單外)";
             report.push({ id: a.id, name: "名單外", date: today, time: a.time, status: status });
         });
-
         report.sort((a, b) => a.id.localeCompare(b.id));
         let csv = "\ufeff學號,姓名,日期,點名時間,狀態\n";
         report.forEach(r => csv += `${r.id},${r.name},${r.date},${r.time},${r.status}\n`);
-
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url;
+        a.href = URL.createObjectURL(blob);
         a.download = `Attendance_${today.replace(/\//g,'-')}.csv`;
         a.click();
     }
@@ -238,7 +246,6 @@
             updateUI();
         }
     }
-    
     document.getElementById('studentId').addEventListener('keypress', e => { if(e.key==='Enter') checkIn(); });
     loadMasterList();
 </script>
