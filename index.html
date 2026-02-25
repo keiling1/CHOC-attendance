@@ -12,247 +12,138 @@
         @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
         .status-bar { font-size: 13px; padding: 8px; margin-bottom: 10px; border-radius: 5px; }
         .status-ok { background: #d4edda; color: #155724; }
-        #secretConfig { display: none; background: #e9ecef; padding: 15px; border-radius: 8px; margin-bottom: 15px; font-size: 14px; border-left: 5px solid #6c757d; }
-        .config-toggle { color: #ccc; cursor: pointer; text-align: right; font-size: 12px; margin-top: -10px; margin-bottom: 10px; }
-        input[type="text"], input[type="time"] { padding: 12px; font-size: 18px; border: 2px solid #ddd; border-radius: 8px; box-sizing: border-box; width: 100%; }
-        .list-box { height: 400px; overflow-y: auto; border: 1px solid #eee; padding: 10px; border-radius: 8px; background: #fafafa; }
-        .item { padding: 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        #secretConfig { display: none; background: #e9ecef; padding: 15px; border-radius: 8px; margin-bottom: 15px; font-size: 14px; }
+        .config-toggle { color: #ccc; cursor: pointer; text-align: right; font-size: 12px; }
+        input[type="text"], input[type="time"] { padding: 12px; font-size: 18px; border: 2px solid #ddd; border-radius: 8px; width: 100%; box-sizing: border-box; }
+        .list-box { height: 350px; overflow-y: auto; border: 1px solid #eee; padding: 10px; border-radius: 8px; background: #fafafa; }
+        .item { padding: 8px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
         .tag { font-size: 11px; padding: 2px 6px; border-radius: 4px; color: white; background: #28a745; }
-        .tag-absent { background: #dc3545; }
-        button { padding: 12px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; width: 100%; margin-top: 10px; transition: 0.2s; }
-        .btn-export { background: #007bff; color: white; }
-        .btn-clear { background: #6c757d; color: white; font-size: 14px; }
-        #reader { width: 100%; border-radius: 12px; overflow: hidden; margin-bottom: 10px; display: none; background: #000; }
-        .btn-scan { background: #6f42c1; color: white; flex: 1; }
-        .btn-torch { background: #f39c12; color: white; flex: 0.4; display: none; }
-        #zoomContainer { display:none; margin: 10px 0; background: #eee; padding: 15px; border-radius: 8px; border: 1px solid #ccc; }
+        .btn-export { background: #007bff; color: white; width: 100%; padding: 12px; border: none; border-radius: 6px; font-weight: bold; margin-top: 10px; }
+        #reader { width: 100%; border-radius: 12px; overflow: hidden; display: none; margin-top: 10px; }
+        #zoomContainer { display:none; margin: 10px 0; background: #eee; padding: 10px; border-radius: 8px; }
     </style>
 </head>
 <body>
 
 <div class="config-toggle" onclick="toggleConfig()">⚙️ 內部設定</div>
 <div id="secretConfig" class="card">
-    <strong>🤫 內部設定 (學生不可見)</strong><br><br>
-    🕒 遲到門檻：<input type="time" id="lateTime" value="10:30"><br>
-    🕒 大遲到門檻：<input type="time" id="veryLateTime" value="11:00"><br>
-    🆔 學號長度：<input type="number" id="idLength" value="9" style="width:60px;"> (自動判定用)
+    <strong>🤫 判定時間與自動化設定</strong><br><br>
+    🕒 遲到：<input type="time" id="lateTime" value="10:30">
+    🕒 大遲到：<input type="time" id="veryLateTime" value="11:00"><br>
+    🆔 學號長度：<input type="number" id="idLength" value="9" style="width:60px;">
 </div>
 
 <div class="card">
     <h2>🎓 課程點名系統</h2>
     <div id="loadStatus" class="status-bar">載入中...</div>
-    
-    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
-        <button class="btn-scan" id="scanBtn" onclick="toggleScanner()">📷 開啟相機掃描 Barcode</button>
-        <button class="btn-torch" id="torchBtn" onclick="toggleTorch()">💡 手電筒</button>
-    </div>
-
+    <button onclick="toggleScanner()" style="background:#6f42c1; color:white; padding:10px; width:100%; border:none; border-radius:6px; font-weight:bold;">📷 開啟條碼掃描</button>
     <div id="zoomContainer">
-        <label style="display:block; margin-bottom:5px; font-weight:bold;">🔍 數位縮放 (對不到焦請拿遠並拉大):</label>
-        <input type="range" id="zoomRange" min="1" max="5" step="0.1" value="1" style="width: 100%; height: 25px;">
+        <label>🔍 縮放 (對不到焦請拿遠並放大):</label>
+        <input type="range" id="zoomRange" min="1" max="5" step="0.1" value="1" style="width:100%;">
     </div>
-
     <div id="reader"></div>
-
-    <input type="text" id="studentId" placeholder="手動輸入或掃描結果..." autofocus>
+    <input type="text" id="studentId" placeholder="手動輸入或掃描結果..." autofocus style="margin-top:10px;">
 </div>
 
 <div class="grid">
-    <div class="card">
-        <h3>📍 已到 (<span id="presentCount">0</span>)</h3>
-        <div id="checkInList" class="list-box"></div>
-    </div>
-    <div class="card">
-        <h3>📋 未到 (<span id="absentCount">0</span>)</h3>
-        <div id="absentList" class="list-box"></div>
-    </div>
+    <div class="card"><h3>📍 已到 (<span id="presentCount">0</span>)</h3><div id="checkInList" class="list-box"></div></div>
+    <div class="card"><h3>📋 未到 (<span id="absentCount">0</span>)</h3><div id="absentList" class="list-box"></div></div>
 </div>
 
-<button class="btn-export" onclick="exportResults()">📦 匯出當週報表 (Copy to DB)</button>
-<button class="btn-clear" onclick="clearDailyData()">⚠️ 清除本次紀錄</button>
+<button class="btn-export" onclick="exportResults()">📦 匯出當週報表 (手動貼至 Excel)</button>
 
 <script>
     let masterList = {}; 
     let attendance = JSON.parse(localStorage.getItem('gh_attendance')) || [];
     let html5QrCode;
-    let isTorchOn = false;
     let videoTrack = null;
 
-    function toggleConfig() {
-        const config = document.getElementById('secretConfig');
-        config.style.display = config.style.display === 'block' ? 'none' : 'block';
-    }
+    function toggleConfig() { const s = document.getElementById('secretConfig'); s.style.display = s.style.display === 'block' ? 'none' : 'block'; }
 
     function toggleScanner() {
-        const readerDiv = document.getElementById('reader');
-        const btn = document.getElementById('scanBtn');
-        if (readerDiv.style.display === 'none' || !readerDiv.style.display) {
-            readerDiv.style.display = 'block';
-            btn.innerText = "❌ 關閉相機";
-            startScanner();
-        } else {
-            stopScanner();
-            readerDiv.style.display = 'none';
-            btn.innerText = "📷 開啟相機掃描 Barcode";
-        }
+        const r = document.getElementById('reader');
+        if (r.style.display === 'none' || !r.style.display) { r.style.display = 'block'; startScanner(); }
+        else { stopScanner(); r.style.display = 'none'; }
     }
 
     function startScanner() {
-        const formatsToSupport = [
-            Html5QrcodeSupportedFormats.CODE_128,
-            Html5QrcodeSupportedFormats.CODE_39,
-            Html5QrcodeSupportedFormats.EAN_13
-        ];
         html5QrCode = new Html5Qrcode("reader");
-        const config = { fps: 25, qrbox: { width: 320, height: 120 } }; 
-
-        html5QrCode.start({ facingMode: "environment" }, config, (decodedText) => {
-            document.getElementById('studentId').value = decodedText.trim().toUpperCase();
+        const config = { fps: 20, qrbox: { width: 300, height: 120 } };
+        html5QrCode.start({ facingMode: "environment" }, config, (text) => {
+            document.getElementById('studentId').value = text.trim().toUpperCase();
             checkIn();
-            if (navigator.vibrate) navigator.vibrate(100);
         }).then(() => {
             videoTrack = html5QrCode.getRunningTrack();
-            const capabilities = videoTrack.getCapabilities();
-
-            if (capabilities.torch) {
-                document.getElementById('torchBtn').style.display = 'block';
+            const cap = videoTrack.getCapabilities();
+            if (cap.zoom) {
+                document.getElementById('zoomContainer').style.display = 'block';
+                const z = document.getElementById('zoomRange');
+                z.min = cap.zoom.min; z.max = cap.zoom.max; z.oninput = () => { videoTrack.applyConstraints({advanced: [{zoom: z.value}]}); };
             }
-
-            if (capabilities.zoom) {
-                const zoomContainer = document.getElementById('zoomContainer');
-                const zoomRange = document.getElementById('zoomRange');
-                zoomContainer.style.display = 'block';
-                zoomRange.min = capabilities.zoom.min;
-                zoomRange.max = capabilities.zoom.max;
-                zoomRange.step = capabilities.zoom.step;
-                zoomRange.oninput = () => {
-                    videoTrack.applyConstraints({ advanced: [{ zoom: zoomRange.value }] });
-                };
-            }
-        }).catch(err => console.error(err));
+        });
     }
 
-    function toggleTorch() {
-        if (!videoTrack) return;
-        isTorchOn = !isTorchOn;
-        videoTrack.applyConstraints({ advanced: [{ torch: isTorchOn }] });
-        document.getElementById('torchBtn').innerText = isTorchOn ? "🚫 關閉" : "💡 手電筒";
-    }
-
-    function stopScanner() {
-        if (html5QrCode) {
-            html5QrCode.stop().then(() => {
-                document.getElementById('torchBtn').style.display = 'none';
-                document.getElementById('zoomContainer').style.display = 'none';
-                isTorchOn = false;
-                videoTrack = null;
-            }).catch(err => console.error(err));
-        }
-    }
+    function stopScanner() { if (html5QrCode) html5QrCode.stop(); }
 
     async function loadMasterList() {
-        const statusDiv = document.getElementById('loadStatus');
         try {
-            const response = await fetch('list.csv?t=' + new Date().getTime());
-            if (!response.ok) throw new Error('找不到 list.csv');
-            const text = await response.text();
-            const rows = text.split(/\r?\n/);
-            masterList = {};
-            rows.forEach(row => {
+            const resp = await fetch('list.csv?t=' + new Date().getTime());
+            const text = await resp.text();
+            text.split(/\r?\n/).forEach(row => {
                 const cols = row.split(',');
                 if (cols.length >= 2) {
                     const id = cols[0].trim().toUpperCase();
-                    const name = cols[1].trim();
-                    if (id && id !== "學號") masterList[id] = name;
+                    if (id && id !== "學號") masterList[id] = cols[1].trim();
                 }
             });
-            statusDiv.className = "status-bar status-ok";
-            statusDiv.innerText = `✅ 已同步 ${Object.keys(masterList).length} 人`;
+            document.getElementById('loadStatus').innerText = `✅ 已同步 ${Object.keys(masterList).length} 人`;
             updateUI();
-        } catch (err) {
-            statusDiv.innerText = `❌ 錯誤: ${err.message}`;
-        }
+        } catch (e) { document.getElementById('loadStatus').innerText = "❌ 載入失敗"; }
     }
 
     function checkIn() {
         const input = document.getElementById('studentId');
         const id = input.value.trim().toUpperCase();
-        if (!id) return;
-        if (attendance.some(a => a.id === id)) {
-            console.log("已點過名");
-        } else {
-            const name = masterList[id] || "名單外";
-            const now = new Date();
-            const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2,'0')}`;
-            attendance.unshift({ id, name, time });
-            localStorage.setItem('gh_attendance', JSON.stringify(attendance));
-        }
-        input.value = "";
-        input.style.borderColor = "#ddd";
-        updateUI();
+        if (!id || attendance.some(a => a.id === id)) { input.value = ""; return; }
+        const now = new Date();
+        const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+        attendance.unshift({ id, name: masterList[id] || "名單外", time });
+        localStorage.setItem('gh_attendance', JSON.stringify(attendance));
+        input.value = ""; updateUI();
     }
 
     document.getElementById('studentId').addEventListener('input', function() {
         const id = this.value.trim().toUpperCase();
-        const targetLen = parseInt(document.getElementById('idLength').value);
-        if (id.length >= targetLen) {
-            if (masterList[id]) {
-                this.style.borderColor = "#28a745";
-                setTimeout(() => { if(this.value.toUpperCase() === id) checkIn(); }, 400);
-            } else {
-                this.style.borderColor = "#f39c12";
-            }
+        if (id.length >= document.getElementById('idLength').value && masterList[id]) {
+            this.style.borderColor = "#28a745";
+            setTimeout(() => { if(this.value.toUpperCase() === id) checkIn(); }, 400);
         }
     });
 
     function updateUI() {
-        const checkInBox = document.getElementById('checkInList');
-        const absentBox = document.getElementById('absentList');
         document.getElementById('presentCount').innerText = attendance.length;
-        checkInBox.innerHTML = attendance.map(a => `
-            <div class="item">
-                <span><b>${a.id}</b> ${a.name}</span>
-                <span class="tag">${a.time}</span>
-            </div>
-        `).join('');
+        document.getElementById('checkInList').innerHTML = attendance.map(a => `<div class="item"><span><b>${a.id}</b> ${a.name}</span><span class="tag">${a.time}</span></div>`).join('');
         const attendedIds = attendance.map(a => a.id);
         const absentees = Object.keys(masterList).filter(id => !attendedIds.includes(id));
         document.getElementById('absentCount').innerText = absentees.length;
-        absentBox.innerHTML = absentees.map(id => `
-            <div class="item" style="color:#999;">
-                <span>${id} ${masterList[id]}</span>
-                <span class="tag tag-absent">未到</span>
-            </div>
-        `).join('');
+        document.getElementById('absentList').innerHTML = absentees.map(id => `<div class="item" style="color:#999;"><span>${id} ${masterList[id]}</span></div>`).join('');
     }
 
     function exportResults() {
-        if (attendance.length === 0 && Object.keys(masterList).length === 0) return;
         const late = document.getElementById('lateTime').value;
         const veryLate = document.getElementById('veryLateTime').value;
-        const now = new Date();
-        const today = `${now.getFullYear()}/${(now.getMonth()+1).toString().padStart(2,'0')}/${now.getDate().toString().padStart(2,'0')}`;
-        let report = [];
+        const today = new Date().toLocaleDateString('zh-TW');
+        let csv = "\ufeff學號,姓名,日期,時間,狀態\n";
+        
         Object.keys(masterList).forEach(id => {
-            const record = attendance.find(a => a.id === id);
-            if (record) {
-                let status = "已到";
-                if (record.time > veryLate) status = "大遲到";
-                else if (record.time > late) status = "遲到";
-                report.push({ id, name: masterList[id], date: today, time: record.time, status });
-            } else {
-                report.push({ id, name: masterList[id], date: today, time: "", status: "未到" });
+            const rec = attendance.find(a => a.id === id);
+            let status = "未到";
+            if (rec) {
+                status = rec.time > veryLate ? "大遲到" : (rec.time > late ? "遲到" : "已到");
             }
+            csv += `${id},${masterList[id]},${today},${rec ? rec.time : ""},${status}\n`;
         });
-        attendance.filter(a => !masterList[a.id]).forEach(a => {
-            let status = "已到(名單外)";
-            if (a.time > veryLate) status = "大遲到(名單外)";
-            else if (a.time > late) status = "遲到(名單外)";
-            report.push({ id: a.id, name: "名單外", date: today, time: a.time, status: status });
-        });
-        report.sort((a, b) => a.id.localeCompare(b.id));
-        let csv = "\ufeff學號,姓名,日期,點名時間,狀態\n";
-        report.forEach(r => csv += `${r.id},${r.name},${r.date},${r.time},${r.status}\n`);
+
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
@@ -260,15 +151,8 @@
         a.click();
     }
 
-    function clearDailyData() {
-        if (confirm("確定清除紀錄？")) {
-            attendance = [];
-            localStorage.removeItem('gh_attendance');
-            updateUI();
-        }
-    }
-    document.getElementById('studentId').addEventListener('keypress', e => { if(e.key==='Enter') checkIn(); });
     loadMasterList();
+    document.getElementById('studentId').addEventListener('keypress', e => { if(e.key==='Enter') checkIn(); });
 </script>
 </body>
 </html>
