@@ -3,216 +3,177 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>專業點名系統 - 自動化版</title>
-    <script src="https://unpkg.com/html5-qrcode"></script>
+    <title>專業點名系統 - 鍵盤快速輸入版</title>
     <style>
-        body { font-family: -apple-system, sans-serif; max-width: 800px; margin: 10px auto; padding: 15px; background-color: #f8f9fa; }
+        body { font-family: -apple-system, sans-serif; max-width: 900px; margin: 10px auto; padding: 15px; background-color: #f8f9fa; }
         .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 15px; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-        @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
-        .status-bar { font-size: 13px; padding: 8px; margin-bottom: 10px; border-radius: 5px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+        @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
+        .status-bar { font-size: 13px; padding: 8px; margin-bottom: 10px; border-radius: 5px; background: #e9ecef; }
         .status-ok { background: #d4edda; color: #155724; }
         #secretConfig { display: none; background: #e9ecef; padding: 15px; border-radius: 8px; margin-bottom: 15px; font-size: 14px; border-left: 5px solid #6c757d; }
         .config-toggle { color: #ccc; cursor: pointer; text-align: right; font-size: 12px; margin-top: -10px; margin-bottom: 10px; }
-        input[type="text"], input[type="time"] { padding: 10px; font-size: 16px; border: 2px solid #ddd; border-radius: 8px; box-sizing: border-box; width: 100%; }
+        input[type="text"], input[type="time"] { padding: 15px; font-size: 20px; border: 2px solid #ddd; border-radius: 8px; box-sizing: border-box; width: 100%; }
         .list-box { height: 400px; overflow-y: auto; border: 1px solid #eee; padding: 10px; border-radius: 8px; background: #fafafa; }
-        .item { padding: 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        .item { padding: 8px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
         .tag { font-size: 11px; padding: 2px 6px; border-radius: 4px; color: white; background: #28a745; }
+        .tag-leave { background: #f39c12; }
         .tag-absent { background: #dc3545; }
-        button { padding: 12px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; width: 100%; margin-top: 10px; transition: 0.2s; }
-        .btn-export { background: #007bff; color: white; }
-        .btn-clear { background: #6c757d; color: white; font-size: 14px; }
-        /* QR 掃描器樣式 */
-        #reader { width: 100%; border-radius: 12px; overflow: hidden; margin-bottom: 10px; display: none; }
-        .btn-scan { background: #6f42c1; color: white; margin-bottom: 10px; }
+        .btn-group { display: flex; gap: 8px; margin-top: 10px; }
+        button { cursor: pointer; border: none; border-radius: 6px; font-weight: bold; transition: 0.2s; }
+        .btn-leave { background: #f39c12; color: white; flex: 1; padding: 15px; font-size: 16px; }
+        .btn-export { background: #007bff; color: white; width: 100%; padding: 18px; font-size: 18px; margin-top: 10px; }
+        .btn-clear { background: #6c757d; color: white; border: none; padding: 8px; margin-top: 20px; border-radius: 5px; cursor: pointer; font-size: 12px; }
     </style>
 </head>
 <body>
 
 <div class="config-toggle" onclick="toggleConfig()">⚙️ 內部設定</div>
 <div id="secretConfig" class="card">
-    <strong>🤫 內部設定 (學生不可見)</strong><br><br>
+    <strong>🤫 內部判定設定 (學生不可見)</strong><br><br>
     🕒 遲到門檻：<input type="time" id="lateTime" value="10:30"><br>
     🕒 大遲到門檻：<input type="time" id="veryLateTime" value="11:00"><br>
-    🆔 學號長度：<input type="number" id="idLength" value="9" style="width:60px;"> (自動送出用)
+    🆔 學號長度：<input type="number" id="idLength" value="9" style="width:60px;"> (自動點名判定)
 </div>
 
 <div class="card">
     <h2>🎓 課程點名系統</h2>
     <div id="loadStatus" class="status-bar">載入中...</div>
     
-    <input type="text" id="studentId" placeholder="手動輸入學號..." autofocus>
+    <input type="text" id="studentId" placeholder="請輸入學號..." autofocus>
+    
+    <div class="btn-group">
+        <button class="btn-leave" onclick="markAsLeave()">📝 標記此學號為「請假」</button>
+    </div>
 </div>
 
 <div class="grid">
     <div class="card">
-        <h3>📍 已到 (<span id="presentCount">0</span>)</h3>
+        <h3 style="color:#28a745;">📍 已到 (<span id="presentCount">0</span>)</h3>
         <div id="checkInList" class="list-box"></div>
     </div>
     <div class="card">
-        <h3>📋 未到 (<span id="absentCount">0</span>)</h3>
+        <h3 style="color:#f39c12;">📝 請假 (<span id="leaveCount">0</span>)</h3>
+        <div id="leaveList" class="list-box"></div>
+    </div>
+    <div class="card">
+        <h3 style="color:#dc3545;">📋 未到 (<span id="absentCount">0</span>)</h3>
         <div id="absentList" class="list-box"></div>
     </div>
 </div>
 
-<button class="btn-export" onclick="exportResults()">📦 匯出當週報表 (Copy to DB)</button>
+<button class="btn-export" onclick="exportResults()">📦 匯出當週報表 (下載 CSV)</button>
 <button class="btn-clear" onclick="clearDailyData()">⚠️ 清除本次紀錄</button>
 
 <script>
     let masterList = {}; 
     let attendance = JSON.parse(localStorage.getItem('gh_attendance')) || [];
-    let html5QrCode;
 
-    function toggleConfig() {
-        const config = document.getElementById('secretConfig');
-        config.style.display = config.style.display === 'block' ? 'none' : 'block';
-    }
+    function toggleConfig() { const s = document.getElementById('secretConfig'); s.style.display = s.style.display === 'block' ? 'none' : 'block'; }
 
-    // --- 核心邏輯 ---
+    // --- 核心點名邏輯 ---
     async function loadMasterList() {
-        const statusDiv = document.getElementById('loadStatus');
         try {
-            const response = await fetch('list.csv?t=' + new Date().getTime());
-            if (!response.ok) throw new Error('找不到 list.csv');
-            const text = await response.text();
-            const rows = text.split(/\r?\n/);
-            masterList = {};
-            rows.forEach(row => {
+            const resp = await fetch('list.csv?t=' + new Date().getTime());
+            const text = await resp.text();
+            text.split(/\r?\n/).forEach(row => {
                 const cols = row.split(',');
                 if (cols.length >= 2) {
                     const id = cols[0].trim().toUpperCase();
-                    const name = cols[1].trim();
-                    if (id && id !== "學號") masterList[id] = name;
+                    if (id && id !== "學號") masterList[id] = cols[1].trim();
                 }
             });
-            statusDiv.className = "status-bar status-ok";
-            statusDiv.innerText = `✅ 已同步 ${Object.keys(masterList).length} 人`;
-            
-            // 處理網址參數點名 (?id=學號)
-            const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.has('id')) {
-                document.getElementById('studentId').value = urlParams.get('id');
-                checkIn();
-            }
-            
+            document.getElementById('loadStatus').className = "status-bar status-ok";
+            document.getElementById('loadStatus').innerText = `✅ 已同步 ${Object.keys(masterList).length} 人`;
             updateUI();
-        } catch (err) {
-            statusDiv.innerText = `❌ 錯誤: ${err.message}`;
-        }
+        } catch (e) { document.getElementById('loadStatus').innerText = "❌ 載入失敗，請確認 list.csv"; }
     }
 
-    function checkIn() {
+    function checkIn() { saveRecord("已到"); }
+    function markAsLeave() { saveRecord("請假"); }
+
+    function saveRecord(statusType) {
         const input = document.getElementById('studentId');
         const id = input.value.trim().toUpperCase();
         if (!id) return;
+        if (attendance.some(a => a.id === id)) { alert("此學號已有紀錄！"); input.value = ""; return; }
+
+        const now = new Date();
+        const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2,'0')}`;
         
-        if (attendance.some(a => a.id === id)) {
-            // 已點過名不報錯，只提示（或是維持靜默方便快速操作）
-            console.log("已點過名");
-        } else {
-            const name = masterList[id] || "名單外";
-            const now = new Date();
-            const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2,'0')}`;
-            attendance.unshift({ id, name, time });
-            localStorage.setItem('gh_attendance', JSON.stringify(attendance));
-            // 震動回饋 (如果手機支援)
-            if (navigator.vibrate) navigator.vibrate(50);
-        }
-        input.value = "";
-        input.style.borderColor = "#ddd";
-        updateUI();
+        attendance.unshift({ id, name: masterList[id] || "名單外", time, status: statusType });
+        localStorage.setItem('gh_attendance', JSON.stringify(attendance));
+        input.value = ""; input.style.borderColor = "#ddd"; updateUI();
     }
 
-    // 監聽輸入框：自動送出與顏色判定
+    // 智慧偵測：符合長度且名單內自動送出
     document.getElementById('studentId').addEventListener('input', function() {
         const id = this.value.trim().toUpperCase();
         const targetLen = parseInt(document.getElementById('idLength').value);
-        
         if (id.length >= targetLen) {
             if (masterList[id]) {
-                this.style.borderColor = "#28a745"; // 綠色：在名單內
-                setTimeout(() => { if(this.value.toUpperCase() === id) checkIn(); }, 300);
+                this.style.borderColor = "#28a745"; // 在名單內：變綠色
+                setTimeout(() => { if(this.value.toUpperCase() === id) checkIn(); }, 400);
             } else {
-                this.style.borderColor = "#f39c12"; // 橘色：名單外，不自動送出
+                this.style.borderColor = "#f39c12"; // 名單外：變橘色提醒
             }
         }
     });
 
     function updateUI() {
-        const checkInBox = document.getElementById('checkInList');
-        const absentBox = document.getElementById('absentList');
-        document.getElementById('presentCount').innerText = attendance.length;
-        checkInBox.innerHTML = attendance.map(a => `
-            <div class="item">
-                <span><b>${a.id}</b> ${a.name}</span>
-                <span class="tag">${a.time}</span>
-            </div>
-        `).join('');
+        const presentList = attendance.filter(a => a.status === "已到");
+        const leaveList = attendance.filter(a => a.status === "請假");
         const attendedIds = attendance.map(a => a.id);
         const absentees = Object.keys(masterList).filter(id => !attendedIds.includes(id));
+
+        document.getElementById('presentCount').innerText = presentList.length;
+        document.getElementById('leaveCount').innerText = leaveList.length;
         document.getElementById('absentCount').innerText = absentees.length;
-        absentBox.innerHTML = absentees.map(id => `
-            <div class="item" style="color:#999;">
-                <span>${id} ${masterList[id]}</span>
-                <span class="tag tag-absent">未到</span>
-            </div>
-        `).join('');
+
+        document.getElementById('checkInList').innerHTML = presentList.map(a => `<div class="item"><span><b>${a.id}</b> ${a.name}</span><span class="tag">${a.time}</span></div>`).join('');
+        document.getElementById('leaveList').innerHTML = leaveList.map(a => `<div class="item"><span><b>${a.id}</b> ${a.name}</span><span class="tag tag-leave">請假</span></div>`).join('');
+        document.getElementById('absentList').innerHTML = absentees.map(id => `<div class="item" style="color:#999;"><span>${id} ${masterList[id]}</span><span class="tag tag-absent">未到</span></div>`).join('');
     }
 
     function exportResults() {
-        if (attendance.length === 0 && Object.keys(masterList).length === 0) {
-            alert("目前沒有資料可以匯出");
-            return;
-        }
         const late = document.getElementById('lateTime').value;
         const veryLate = document.getElementById('veryLateTime').value;
-        const today = new Date().toLocaleDateString('zh-TW'); 
-        let report = [];
-
-        Object.keys(masterList).forEach(id => {
-            const record = attendance.find(a => a.id === id);
-            if (record) {
-                let status = "已到";
-                if (record.time > veryLate) status = "大遲到";
-                else if (record.time > late) status = "遲到";
-                report.push({ id, name: masterList[id], date: today, time: record.time, status });
-            } else {
-                report.push({ id, name: masterList[id], date: today, time: "", status: "未到" });
-            }
-        });
-
-        const guests = attendance.filter(a => !masterList[a.id]);
-        guests.forEach(a => {
-            let status = "已到(名單外)";
-            if (a.time > veryLate) status = "大遲到(名單外)";
-            else if (a.time > late) status = "遲到(名單外)";
-            report.push({ id: a.id, name: "現場登記/名單外", date: today, time: a.time, status: status });
-        });
-
-        report.sort((a, b) => a.id.localeCompare(b.id));
+        const now = new Date();
+        const today = `${now.getFullYear()}/${(now.getMonth()+1).toString().padStart(2,'0')}/${now.getDate().toString().padStart(2,'0')}`;
         let csv = "\ufeff學號,姓名,日期,點名時間,狀態\n";
-        report.forEach(r => csv += `${r.id},${r.name},${r.date},${r.time},${r.status}\n`);
+        
+        Object.keys(masterList).forEach(id => {
+            const rec = attendance.find(a => a.id === id);
+            let finalStatus = "未到";
+            let timeVal = "";
+            if (rec) {
+                timeVal = rec.time;
+                if (rec.status === "請假") finalStatus = "請假（待確認）";
+                else {
+                    if (timeVal > veryLate) finalStatus = "大遲到";
+                    else if (timeVal > late) finalStatus = "遲到";
+                    else finalStatus = "已到";
+                }
+            }
+            csv += `${id},${masterList[id]},${today},${timeVal},${finalStatus}\n`;
+        });
+        
+        // 名單外人員
+        attendance.filter(a => !masterList[a.id]).forEach(a => {
+            csv += `${a.id},名單外,${today},${a.time},${a.status}(名單外)\n`;
+        });
 
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url;
+        a.href = URL.createObjectURL(blob);
         a.download = `Attendance_${today.replace(/\//g,'-')}.csv`;
-        document.body.appendChild(a);
         a.click();
-        document.body.removeChild(a);
     }
 
-    function clearDailyData() {
-        if (confirm("確定清除紀錄？")) {
-            attendance = [];
-            localStorage.removeItem('gh_attendance');
-            updateUI();
-        }
-    }
-    
-    document.getElementById('studentId').addEventListener('keypress', e => { if(e.key==='Enter') checkIn(); });
+    function clearDailyData() { if (confirm("確定清除紀錄？")) { attendance = []; localStorage.removeItem('gh_attendance'); updateUI(); } }
+
     loadMasterList();
+    document.getElementById('studentId').addEventListener('keypress', e => { if(e.key==='Enter') checkIn(); });
 </script>
 </body>
 </html>
